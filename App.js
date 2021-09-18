@@ -7,72 +7,48 @@
  */
 
 import React, {useEffect, useState} from 'react';
-import type {Node} from 'react';
+//import type {Node} from 'react';
 import {
   SafeAreaView,
-  ScrollView,
   StatusBar,
-  StyleSheet,
   Text,
-  useColorScheme,
-  View,
-  Alert,
   PermissionsAndroid,
-  Platform,
   DeviceEventEmitter,
-  NativeAppEventEmitter,
+  Button,
 } from 'react-native';
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
 import Geolocation from 'react-native-geolocation-service';
 import ReactNativeForegroundService from '@supersami/rn-foreground-service';
+import { TestWatcher } from '@jest/core';
+import { blockStatement } from '@babel/types';
 
-const Section = ({children, title}): Node => {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
+
+
+const App= () => {
+  const [currentLongitude, setCurrentLongitude] = useState(0);
+  const [currentLatitude, setCurrentLatitude] = useState(0);
+
+  const eventEmitter = () => {
+        // device event emitter used to
+        let subscription = DeviceEventEmitter.addListener(
+          'notificationClickHandle',
+          function (e)  {
+            if(e.button==='stop') {
+              onStop();
+            }
+
           },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
-};
-
-const App: () => Node = () => {
-  const [currentLongitude, setCurrentLongitude] = useState(null);
-  const [currentLatitude, setCurrentLatitude] = useState(null);
-  const [locationStatus, setLocationStatus] = useState('');
-  const [locationResult, setLocationResult] = useState(false);
-  const isDarkMode = useColorScheme() === 'dark';
-
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
-  };
+        );
+        return function cleanup() {
+          subscription.remove();
+        };
+  }
 
   useEffect(() => {
     checkPermissions();
+    eventEmitter();
   }, []);
+
 
   const checkPermissions = async () => {
     try {
@@ -84,14 +60,13 @@ const App: () => Node = () => {
         },
       );
       if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-        // console.log('You can use the location');
+        
+        //START GEO SERVICE!!!
+        onStart();
 
-        getOneTimeLocation();
-        // setLocationGranted(true);
-        // getLocationValues()
       } else {
         // setLocationGranted(false);
-        // alert("Location permission denied");
+        alert("Location permission denied");
       }
     } catch (err) {
       console.warn(err);
@@ -99,96 +74,84 @@ const App: () => Node = () => {
   };
 
   const getOneTimeLocation = () => {
-    setLocationStatus('Getting Location ...');
+
     Geolocation.getCurrentPosition(
       //Will give you the current location
       position => {
-        setLocationStatus(true);
-
-        //getting the Longitude from the location json
-        const currentLongitude = JSON.stringify(position.coords.longitude);
-
-        //getting the Latitude from the location json
-        const currentLatitude = JSON.stringify(position.coords.latitude);
-
+        console.log(position.coords);
         //Setting Longitude state
-        setCurrentLongitude(parseFloat(currentLongitude));
-
         //Setting Longitude state
-        setCurrentLatitude(parseFloat(currentLatitude));
-        // console.log("Outside");
+        /* cause a stats error when the app was closed and opend again r*/
+        
+        setCurrentLongitude(position.coords.longitude);
+        setCurrentLatitude(position.coords.latitude);
+      
 
-        // console.log(
-        //   currentLongitude,
-        //   'currentLongitude',
-        //   '----',
-        //   currentLatitude,
-        //   'currentLatitude',
-        // );
       },
       error => {
-        setLocationStatus(error.message);
+        console.log(error.message);
       },
       {
-        enableHighAccuracy: false,
+        enableHighAccuracy: true,
         timeout: 30000,
         maximumAge: 1000,
       },
+    );  };
+
+
+  
+  const onStart = () => {
+    
+    // Checking if the task i am going to create already exist and running, which means that the foreground is also running.
+    if (ReactNativeForegroundService.is_task_running('pcd')) return;
+    // Creating a task.
+    ReactNativeForegroundService.add_task(
+      () => getOneTimeLocation(),
+      {
+        delay: 30000,
+        onLoop: true,
+        taskId: 'taskid',
+        onError: (e) => console.log(`Error logging:`, e),
+      },
     );
+  
+
+    // starting  foreground service.
+    return ReactNativeForegroundService.start({
+      id: 144,
+      title: 'SERVICE',
+      message: 'TASK IS RUNNING!!!',
+      importance: 'max',
+      number: String(1),
+      button: true,
+      buttonText: 'STOP',
+      buttonOnPress : 'stop',
+      mainOnPress : 'show',
+    });
   };
 
-  ReactNativeForegroundService.start({
-    id: 144,
-    title: 'Foreground Service',
-    message: 'you are online!',
-  });
-
-  ReactNativeForegroundService.add_task(() => getOneTimeLocation(), {
-    delay: 100,
-    onLoop: true,
-    taskId: 'taskid',
-    onError: e => console.log(`Error logging:`, e),
-  });
+  const onStop = () => {
+    // Make always sure to remove the task before stoping the service. and instead of re-adding the task you can always update the task.
+    if (ReactNativeForegroundService.is_task_running('pcd')) {
+      ReactNativeForegroundService.remove_task('pcd');
+    }
+    // Stoping Foreground service.
+    return ReactNativeForegroundService.stop();
+  };
+  
 
   return (
-    <SafeAreaView style={backgroundStyle}>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={backgroundStyle}>
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}>
-          <Section>
-            <Text style={styles.highlight}>
-              {currentLatitude}-{currentLongitude}
-            </Text>
-          </Section>
-        </View>
-      </ScrollView>
+    <>
+    <StatusBar barStyle="dark-content" />
+    <SafeAreaView
+      style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+      <Text>{currentLatitude}-{currentLongitude}</Text>
+      <Button title={'Start'} onPress={onStart} />
+      <Button title={'Stop'} onPress={onStop} />
     </SafeAreaView>
+    </>
   );
 };
 
-const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-  },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
-  },
-  highlight: {
-    fontWeight: '700',
-  },
-});
 
 export default App;
